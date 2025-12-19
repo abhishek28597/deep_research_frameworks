@@ -101,7 +101,7 @@ npm install
 
 The Groq API key is configured in `backend/config.py`. You can either:
 
-1. **Keep it in config.py** (default - already set):
+1. **Keep it in config.py** (add your api key to backend/config.py):
 ```python
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "your-api-key-here")
 ```
