@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ai_council_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount data directory for persistence
+      - ./data:/app/data
+      # Mount backend code for hot reload (optional, for development)
+      - ./backend:/app/backend
+    restart: unless-stopped
+    networks:
+      - ai_council_network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: ai_council_frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - DOCKER=true
+    volumes:
+      # Mount frontend code for hot reload (optional, for development)
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - ai_council_network
+
+networks:
+  ai_council_network:
+    driver: bridge
+
