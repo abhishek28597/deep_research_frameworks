@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Groq API key
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "ENTER YOUR GROQ API KEY HERE")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "ENTER_YOUR_GROQ_API_KEY_HERE")
 
 # Council members - list of Groq model identifiers
 COUNCIL_MODELS = [

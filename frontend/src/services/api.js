@@ -84,13 +84,18 @@ export async function exportConversation(conversationId) {
 /**
  * Send a message and stream the response using Server-Sent Events
  */
-export async function sendMessageStream(conversationId, content, onEvent) {
+export async function sendMessageStream(conversationId, content, onEvent, userInstructions = null) {
+  const body = { content };
+  if (userInstructions) {
+    body.user_instructions = userInstructions;
+  }
+  
   const response = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}/message/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
