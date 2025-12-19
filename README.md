@@ -1,23 +1,37 @@
 # AI Council
 
-A multi-model LLM orchestration system that uses a "council" approach to generate high-quality responses through collaborative deliberation among multiple AI models.
+A multi-model LLM orchestration system that uses multiple decision-making frameworks to generate high-quality responses through collaborative deliberation among multiple AI models.
 
 ## Overview
 
-AI Council implements a 3-stage deliberation process where multiple LLM models work together to provide comprehensive answers:
+AI Council supports multiple decision-making modes:
+
+### Council Mode (3-Stage Deliberation)
+A collaborative approach where multiple LLM models work together to provide comprehensive answers:
 
 1. **Stage 1**: Each council member provides an individual response
 2. **Stage 2**: Each model ranks all responses (anonymized) to identify the best answers
 3. **Stage 3**: A chairman model synthesizes the top-ranked responses into a final answer
 
-This approach leverages the collective intelligence of multiple models to produce more reliable and well-rounded responses.
+### DxO Mode (Decision by Experts - 4-Stage Framework)
+A specialized decision-making framework with dedicated expert agents:
+
+1. **Stage 1**: Lead Research Agent performs breadth-first research
+2. **Stage 2**: Critic Agent analyzes and critiques the research findings
+3. **Stage 3**: Domain Expert Agent provides specialized domain expertise
+4. **Stage 4**: Aggregator Agent synthesizes all inputs into a final comprehensive answer
+
+Both approaches leverage the collective intelligence of multiple models to produce more reliable and well-rounded responses.
 
 ## Features
 
 - 🤖 **Multi-Model Collaboration**: Uses multiple Groq models working in parallel
-- 📊 **3-Stage Deliberation Process**: Structured approach to response generation
-- 🎯 **Ranking System**: Models evaluate and rank each other's responses
-- 🧠 **Chairman Synthesis**: Final model synthesizes top responses
+- 📊 **Multiple Decision Frameworks**: 
+  - **Council Mode**: 3-stage deliberation with ranking system
+  - **DxO Mode**: 4-stage expert-based decision framework
+- 🎯 **Ranking System**: Models evaluate and rank each other's responses (Council mode)
+- 🧠 **Expert Agents**: Specialized agents for research, critique, domain expertise, and synthesis (DxO mode)
+- ⚙️ **Customizable Instructions**: Provide optional user instructions for each agent in DxO mode
 - 💬 **Conversation Management**: Persistent conversation history with mode-based organization
 - 🗂️ **Mode-Based Organization**: Conversations organized by mode (Council, Super Chat, DxO, etc.)
 - 🗑️ **Delete Conversations**: Remove conversations you no longer need
@@ -29,7 +43,7 @@ This approach leverages the collective intelligence of multiple models to produc
 
 ## Architecture
 
-### Council Process
+### Council Process (3-Stage)
 
 ```
 User Query
@@ -51,6 +65,42 @@ User Query
 │  Stage 3: Chairman Synthesis        │
 │  - Top responses identified          │
 │  - Final synthesized answer         │
+└─────────────────────────────────────┘
+    ↓
+Final Response
+```
+
+### DxO Process (4-Stage Decision by Experts)
+
+```
+User Query + Optional User Instructions
+    ↓
+┌─────────────────────────────────────┐
+│  Stage 1: Lead Research Agent       │
+│  - Breadth-first research            │
+│  - Multiple angles & perspectives   │
+│  - Comprehensive information        │
+└─────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────┐
+│  Stage 2: Critic Agent              │
+│  - Critical analysis                │
+│  - Identifies gaps & weaknesses    │
+│  - Evaluates quality & validity    │
+└─────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────┐
+│  Stage 3: Domain Expert Agent       │
+│  - Specialized domain knowledge     │
+│  - Expert recommendations           │
+│  - Addresses gaps from critique    │
+└─────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────┐
+│  Stage 4: Aggregator Agent          │
+│  - Synthesizes all inputs            │
+│  - Resolves contradictions           │
+│  - Final comprehensive answer       │
 └─────────────────────────────────────┘
     ↓
 Final Response
@@ -119,6 +169,14 @@ Default council members are configured in `backend/config.py`:
 - `moonshotai/kimi-k2-instruct-0905`
 
 Chairman model: `openai/gpt-oss-120b`
+
+### DxO Agents
+
+DxO (Decision by Experts) agents are configured in `backend/config.py`:
+- **Lead Research Agent**: `openai/gpt-oss-20b` - Performs breadth-first research
+- **Critic Agent**: `moonshotai/kimi-k2-instruct-0905` - Provides critical analysis
+- **Domain Expert Agent**: `llama-3.1-8b-instant` - Offers specialized domain expertise
+- **Aggregator Agent**: `openai/gpt-oss-120b` - Synthesizes final response
 
 You can modify these in `backend/config.py` to use different models.
 
@@ -219,16 +277,36 @@ Returns full conversation with all messages.
 #### Send Message (Streaming)
 ```
 POST /api/conversations/{conversation_id}/message/stream
-Body: { "content": "Your question here" }
+Body: { 
+  "content": "Your question here",
+  "user_instructions": {  // Optional, for DxO mode
+    "lead_research": "Focus on recent developments",
+    "critic": "Pay special attention to methodology",
+    "domain_expert": "Consider industry best practices",
+    "aggregator": "Emphasize practical applications"
+  }
+}
 ```
-Sends a message and streams the 3-stage council response via Server-Sent Events.
+Sends a message and streams the response via Server-Sent Events. The response format depends on the conversation mode:
+- **Council mode**: 3-stage process (stage1, stage2, stage3)
+- **DxO mode**: 4-stage process (stage1, stage2, stage3, stage4)
+
+**Note**: `user_instructions` is optional and only used in DxO mode. Each key corresponds to an agent and allows you to provide custom instructions that will be appended to that agent's prompt.
 
 #### Send Message (Non-streaming)
 ```
 POST /api/conversations/{conversation_id}/message
-Body: { "content": "Your question here" }
+Body: { 
+  "content": "Your question here",
+  "user_instructions": {  // Optional, for DxO mode
+    "lead_research": "Focus on recent developments",
+    "critic": "Pay special attention to methodology",
+    "domain_expert": "Consider industry best practices",
+    "aggregator": "Emphasize practical applications"
+  }
+}
 ```
-Sends a message and returns the complete response when finished.
+Sends a message and returns the complete response when finished. Response format depends on conversation mode (Council or DxO).
 
 #### Delete Conversation
 ```
@@ -243,8 +321,9 @@ GET /api/conversations/{conversation_id}/export
 Exports a conversation as a formatted text file. The file includes:
 - Conversation metadata (title, mode, creation date)
 - All user messages
-- All assistant responses with complete Stage 1, 2, and 3 details
-- Aggregate rankings
+- All assistant responses with complete stage details:
+  - **Council mode**: Stage 1 (individual responses), Stage 2 (rankings), Stage 3 (final synthesis), aggregate rankings
+  - **DxO mode**: Stage 1 (lead research), Stage 2 (critic), Stage 3 (domain expert), Stage 4 (aggregator)
 
 ## Project Structure
 
@@ -254,6 +333,7 @@ ai_council/
 │   ├── __init__.py
 │   ├── main.py              # FastAPI application
 │   ├── council.py           # 3-stage council logic
+│   ├── DxO.py               # 4-stage DxO framework logic
 │   ├── config.py            # Configuration (API keys, models)
 │   ├── storage.py           # Conversation storage
 │   ├── groq_client.py       # Groq API client
@@ -265,6 +345,8 @@ ai_council/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/      # React components
+│   │   │   ├── Council/     # Council mode components
+│   │   │   └── DxO/        # DxO mode components
 │   │   ├── services/        # API service
 │   │   └── utils/           # Utilities
 │   ├── package.json         # Node dependencies
@@ -288,7 +370,9 @@ Conversations are stored as JSON files in the `data/conversations/` directory. E
 - `mode`: Conversation mode/type (e.g., "Council", "Super Chat", "DxO", "Ensemble", "Shoppr")
 - `messages`: Array of user and assistant messages
   - User messages: `{ "role": "user", "content": "..." }`
-  - Assistant messages: `{ "role": "assistant", "stage1": [...], "stage2": [...], "stage3": {...}, "aggregate_rankings": [...], "label_to_model": {...} }`
+  - Assistant messages (Council mode): `{ "role": "assistant", "stage1": [...], "stage2": [...], "stage3": {...}, "aggregate_rankings": [...], "label_to_model": {...} }`
+  - Assistant messages (DxO mode): `{ "role": "assistant", "stage1": {...}, "stage2": {...}, "stage3": {...}, "stage4": {...} }`
+    - Each stage contains: `{ "model": "...", "response": "..." }`
 
 The data directory is:
 - **Local development**: `./data/conversations/`
@@ -299,11 +383,26 @@ The data directory is:
 ### Mode-Based Organization
 
 Conversations are organized by **mode**, allowing you to separate different types of interactions:
-- **Council**: Multi-model deliberation (default)
+- **Council**: Multi-model deliberation with 3-stage ranking system (default)
+- **DxO**: Decision by Experts - 4-stage expert-based framework with specialized agents
 - **Super Chat**: Single-model conversations
-- **DxO**: Decision analysis mode
 - **Ensemble**: Ensemble analysis mode
 - **Shoppr**: Shopping/research mode
+
+### DxO Mode Features
+
+DxO (Decision by Experts) mode provides a specialized decision-making framework:
+
+- **4 Specialized Agents**: Each agent has a specific role in the decision process
+- **User Instructions**: Optionally provide custom instructions for each agent directly in the UI
+- **Integrated Workflow**: Research → Critique → Domain Expertise → Final Synthesis
+- **Agent-Specific Models**: Each agent uses a model optimized for its role
+
+To use DxO mode:
+1. Navigate to the "DxO" tab in the application
+2. Optionally add instructions for each agent in their respective cards
+3. Submit your query to start the 4-stage process
+4. View results from each stage as they complete
 
 ### Conversation History
 
@@ -347,11 +446,28 @@ When creating conversations programmatically, specify the mode:
 const conversation = await createConversation('Council');
 const superChat = await createConversation('Super Chat');
 const dxo = await createConversation('DxO');
+
+// Sending message with user instructions (DxO mode)
+await sendMessageStream(conversationId, query, onEvent, {
+  lead_research: "Focus on recent developments",
+  critic: "Pay special attention to methodology",
+  domain_expert: "Consider industry best practices",
+  aggregator: "Emphasize practical applications"
+});
 ```
 
 ```python
 # Backend example
 conversation = storage.create_conversation(conversation_id, mode="Council")
+dxo_conversation = storage.create_conversation(conversation_id, mode="DxO")
+
+# Sending message with user instructions (DxO mode)
+user_instructions = {
+    "lead_research": "Focus on recent developments",
+    "critic": "Pay special attention to methodology",
+    "domain_expert": "Consider industry best practices",
+    "aggregator": "Emphasize practical applications"
+}
 ```
 
 ### Frontend Environment Variables

@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 const navItems = [
   { path: '/super-chat', label: 'Super Chat' },
   { path: '/council', label: 'Council' },
-  { path: '/dpo', label: 'DPO' },
+  { path: '/dxo', label: 'DxO' },
   { path: '/ensemble', label: 'Ensemble' },
   { path: '/shoppr', label: 'Shoppr' },
   { path: '/frontier', label: 'Frontier' },
@@ -79,13 +79,21 @@ export default function Navbar() {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         onSelectConversation={(convId) => {
-          // Navigate to council page with conversation ID
-          navigate(`/council?conversation=${convId}`);
+          // Navigate to appropriate page based on current location
+          const currentPath = location.pathname;
+          if (currentPath === '/council') {
+            navigate(`/council?conversation=${convId}`);
+          } else if (currentPath === '/dxo') {
+            navigate(`/dxo?conversation=${convId}`);
+          } else {
+            // Default to council
+            navigate(`/council?conversation=${convId}`);
+          }
         }}
         currentMode={
           location.pathname === '/council' ? 'Council' :
           location.pathname === '/super-chat' ? 'Super Chat' :
-          location.pathname === '/dpo' ? 'DxO' :
+          location.pathname === '/dxo' ? 'DxO' :
           location.pathname === '/ensemble' ? 'Ensemble' :
           location.pathname === '/shoppr' ? 'Shoppr' :
           null
