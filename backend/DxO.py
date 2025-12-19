@@ -10,12 +10,13 @@ from .config import (
 )
 
 
-async def stage1_lead_research(user_query: str) -> Dict[str, Any]:
+async def stage1_lead_research(user_query: str, user_instruction: str = None) -> Dict[str, Any]:
     """
     Stage 1: Lead Research agent performs breadth-first research.
 
     Args:
         user_query: The user's question
+        user_instruction: Optional user-provided instruction for this agent
 
     Returns:
         Dict with 'model' and 'response' keys
@@ -33,6 +34,9 @@ Your research approach should:
 5. Structure your findings clearly and comprehensively
 
 Provide a thorough, well-organized research report that covers the breadth of the topic:"""
+    
+    if user_instruction:
+        research_prompt += f"\n\nAdditional User Instruction:\n{user_instruction}"
 
     messages = [{"role": "user", "content": research_prompt}]
 
@@ -52,7 +56,8 @@ Provide a thorough, well-organized research report that covers the breadth of th
 
 async def stage2_critic_analysis(
     user_query: str,
-    research_result: Dict[str, Any]
+    research_result: Dict[str, Any],
+    user_instruction: str = None
 ) -> Dict[str, Any]:
     """
     Stage 2: Critic agent analyzes and critiques the research.
@@ -60,6 +65,7 @@ async def stage2_critic_analysis(
     Args:
         user_query: The original user query
         research_result: Research results from Stage 1
+        user_instruction: Optional user-provided instruction for this agent
 
     Returns:
         Dict with 'model' and 'response' keys containing critique
@@ -81,6 +87,9 @@ Your critical analysis should:
 6. Assess the reliability and validity of the findings
 
 Provide a thorough critical analysis:"""
+    
+    if user_instruction:
+        critique_prompt += f"\n\nAdditional User Instruction:\n{user_instruction}"
 
     messages = [{"role": "user", "content": critique_prompt}]
 
@@ -101,7 +110,8 @@ Provide a thorough critical analysis:"""
 async def stage3_domain_expertise(
     user_query: str,
     research_result: Dict[str, Any],
-    critique_result: Dict[str, Any]
+    critique_result: Dict[str, Any],
+    user_instruction: str = None
 ) -> Dict[str, Any]:
     """
     Stage 3: Domain Expert provides specialized domain expertise.
@@ -110,6 +120,7 @@ async def stage3_domain_expertise(
         user_query: The original user query
         research_result: Research results from Stage 1
         critique_result: Critique from Stage 2
+        user_instruction: Optional user-provided instruction for this agent
 
     Returns:
         Dict with 'model' and 'response' keys containing domain expertise
@@ -134,6 +145,9 @@ Your domain expertise should:
 6. Integrate your expertise with the research findings and critique
 
 Provide your expert analysis and recommendations:"""
+    
+    if user_instruction:
+        expert_prompt += f"\n\nAdditional User Instruction:\n{user_instruction}"
 
     messages = [{"role": "user", "content": expert_prompt}]
 
@@ -155,7 +169,8 @@ async def stage4_aggregate_synthesis(
     user_query: str,
     research_result: Dict[str, Any],
     critique_result: Dict[str, Any],
-    expert_result: Dict[str, Any]
+    expert_result: Dict[str, Any],
+    user_instruction: str = None
 ) -> Dict[str, Any]:
     """
     Stage 4: Aggregator synthesizes all inputs into final response.
@@ -165,6 +180,7 @@ async def stage4_aggregate_synthesis(
         research_result: Research results from Stage 1
         critique_result: Critique from Stage 2
         expert_result: Domain expertise from Stage 3
+        user_instruction: Optional user-provided instruction for this agent
 
     Returns:
         Dict with 'model' and 'response' keys containing final synthesis
@@ -191,6 +207,9 @@ Your task as Aggregator is to:
 6. Ensure the final answer is accurate, complete, and actionable
 
 Provide your synthesized final answer:"""
+    
+    if user_instruction:
+        synthesis_prompt += f"\n\nAdditional User Instruction:\n{user_instruction}"
 
     messages = [{"role": "user", "content": synthesis_prompt}]
 
@@ -246,18 +265,28 @@ Title:"""
     return title
 
 
-async def run_full_dxo(user_query: str) -> Tuple[Dict, Dict, Dict, Dict]:
+async def run_full_dxo(
+    user_query: str,
+    user_instructions: Dict[str, str] = None
+) -> Tuple[Dict, Dict, Dict, Dict]:
     """
     Run the complete 4-stage DxO (Decision by Experts) process.
 
     Args:
         user_query: The user's question
+        user_instructions: Optional dict with keys: 'lead_research', 'critic', 'domain_expert', 'aggregator'
 
     Returns:
         Tuple of (stage1_result, stage2_result, stage3_result, stage4_result)
     """
+    if user_instructions is None:
+        user_instructions = {}
+    
     # Stage 1: Lead Research - breadth-first research
-    stage1_result = await stage1_lead_research(user_query)
+    stage1_result = await stage1_lead_research(
+        user_query,
+        user_instruction=user_instructions.get('lead_research')
+    )
 
     # If research fails, return error
     if stage1_result.get('response', '').startswith("Error:"):
@@ -267,17 +296,27 @@ async def run_full_dxo(user_query: str) -> Tuple[Dict, Dict, Dict, Dict]:
         }
 
     # Stage 2: Critic - analyze and critique the research
-    stage2_result = await stage2_critic_analysis(user_query, stage1_result)
+    stage2_result = await stage2_critic_analysis(
+        user_query,
+        stage1_result,
+        user_instruction=user_instructions.get('critic')
+    )
 
     # Stage 3: Domain Expert - provide domain expertise
-    stage3_result = await stage3_domain_expertise(user_query, stage1_result, stage2_result)
+    stage3_result = await stage3_domain_expertise(
+        user_query,
+        stage1_result,
+        stage2_result,
+        user_instruction=user_instructions.get('domain_expert')
+    )
 
     # Stage 4: Aggregator - synthesize final response
     stage4_result = await stage4_aggregate_synthesis(
         user_query,
         stage1_result,
         stage2_result,
-        stage3_result
+        stage3_result,
+        user_instruction=user_instructions.get('aggregator')
     )
 
     return stage1_result, stage2_result, stage3_result, stage4_result

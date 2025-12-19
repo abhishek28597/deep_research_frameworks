@@ -21,6 +21,34 @@ export const QUICK_PROMPTS = [
 export const API_BASE_URL = 'http://localhost:8000';
 
 // Map model IDs to friendly names
+// DxO agents from backend config - must match backend/config.py
+export const DXO_AGENTS = [
+  {
+    id: 'lead_research',
+    name: 'Lead Research Agent',
+    description: 'Breadth-first research specialist',
+    model: 'openai/gpt-oss-20b',
+  },
+  {
+    id: 'critic',
+    name: 'Critic Agent',
+    description: 'Critical analysis and evaluation',
+    model: 'moonshotai/kimi-k2-instruct-0905',
+  },
+  {
+    id: 'domain_expert',
+    name: 'Domain Expert Agent',
+    description: 'Specialized domain knowledge',
+    model: 'llama-3.1-8b-instant',
+  },
+  {
+    id: 'aggregator',
+    name: 'Aggregator Agent',
+    description: 'Final synthesis and integration',
+    model: 'openai/gpt-oss-120b',
+  },
+];
+
 export const MODEL_NAME_MAP = {
   'openai/gpt-oss-20b': 'GPT OSS 20B',
   'llama-3.1-8b-instant': 'Llama 3.1 8B Instant',

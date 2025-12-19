@@ -1,35 +1,19 @@
 INFO:     Will watch for changes in these directories: ['/Users/abhishekpatra/Desktop/ai_council']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [23835] using WatchFiles
-INFO:     Started server process [23838]
+INFO:     Started reloader process [69433] using WatchFiles
+INFO:     Started server process [69436]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-WARNING:  WatchFiles detected changes in 'backend/storage.py', 'backend/main.py'. Reloading...
+INFO:     127.0.0.1:59184 - "POST /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59188 - "POST /api/conversations/af4302ab-4454-4ab7-a7bb-e744348abe67/message/stream HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59199 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59203 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59207 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59211 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59215 - "GET /api/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59319 - "POST /api/conversations/af4302ab-4454-4ab7-a7bb-e744348abe67/message/stream HTTP/1.1" 200 OK
 INFO:     Shutting down
 INFO:     Waiting for application shutdown.
 INFO:     Application shutdown complete.
-INFO:     Finished server process [23838]
-INFO:     Started server process [23899]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-WARNING:  WatchFiles detected changes in 'backend/storage.py', 'backend/main.py'. Reloading...
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [23899]
-INFO:     Started server process [23941]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     127.0.0.1:57613 - "GET /api/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57617 - "DELETE /api/conversations/f19e08c4-d97e-442d-8457-a070b18a04f5 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57621 - "GET /api/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57625 - "GET /api/conversations/1474bc0a-153d-47ab-b6ad-96032f79fc6c/export HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57631 - "GET /api/conversations/1474bc0a-153d-47ab-b6ad-96032f79fc6c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57635 - "GET /api/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57652 - "POST /api/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57656 - "POST /api/conversations/b671c6d4-df68-43a6-a572-919d14ea3bcc/message/stream HTTP/1.1" 200 OK
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [23941]
-INFO:     Stopping reloader process [23835]
+INFO:     Finished server process [69436]
+INFO:     Stopping reloader process [69433]

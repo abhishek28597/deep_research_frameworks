@@ -196,6 +196,40 @@ def add_assistant_message(
     save_conversation(conversation)
 
 
+def add_dxo_assistant_message(
+    conversation_id: str,
+    stage1: Dict[str, Any],
+    stage2: Dict[str, Any],
+    stage3: Dict[str, Any],
+    stage4: Dict[str, Any]
+):
+    """
+    Add an assistant message with all 4 DxO stages to a conversation.
+
+    Args:
+        conversation_id: Conversation identifier
+        stage1: Lead Research result
+        stage2: Critic result
+        stage3: Domain Expert result
+        stage4: Aggregator result
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    message = {
+        "role": "assistant",
+        "stage1": stage1,
+        "stage2": stage2,
+        "stage3": stage3,
+        "stage4": stage4
+    }
+
+    conversation["messages"].append(message)
+
+    save_conversation(conversation)
+
+
 def update_conversation_title(conversation_id: str, title: str):
     """
     Update the title of a conversation.
