@@ -207,9 +207,9 @@ export default function CouncilPage({ selectedConversationId = null }) {
         </div>
       ) : (
         <>
-          <ResearchPrompt onSubmit={handleSubmit} isLoading={isLoading} />
           <CouncilMembers />
           <ChairmanModel />
+          <ResearchPrompt onSubmit={handleSubmit} isLoading={isLoading} />
           
           {messages.length > 0 ? (
             <ChatDisplay 

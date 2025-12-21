@@ -227,8 +227,8 @@ export default function DxOPage({ selectedConversationId = null }) {
         </div>
       ) : (
         <>
-          <ResearchPrompt onSubmit={handleSubmit} isLoading={isLoading} />
           <DxOAgents instructions={userInstructions} onChange={setUserInstructions} />
+          <ResearchPrompt onSubmit={handleSubmit} isLoading={isLoading} />
           
           {messages.length > 0 ? (
             <DxOChatDisplay 
