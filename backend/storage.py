@@ -230,6 +230,70 @@ def add_dxo_assistant_message(
     save_conversation(conversation)
 
 
+def add_superchat_assistant_message(
+    conversation_id: str,
+    execution_mode: str,
+    council_stage1: List[Dict[str, Any]],
+    council_stage2: List[Dict[str, Any]],
+    council_stage3: Dict[str, Any],
+    dxo_stage1: Dict[str, Any],
+    dxo_stage2: Dict[str, Any],
+    dxo_stage3: Dict[str, Any],
+    dxo_stage4: Dict[str, Any],
+    super_aggregator: Optional[Dict[str, Any]] = None,
+    council_metadata: Optional[Dict[str, Any]] = None
+):
+    """
+    Add an assistant message for Super Chat (sequential or parallel mode).
+
+    Args:
+        conversation_id: Conversation identifier
+        execution_mode: "sequential" or "parallel"
+        council_stage1: Council Stage 1 results
+        council_stage2: Council Stage 2 results
+        council_stage3: Council Stage 3 result
+        dxo_stage1: DxO Stage 1 result
+        dxo_stage2: DxO Stage 2 result
+        dxo_stage3: DxO Stage 3 result
+        dxo_stage4: DxO Stage 4 result
+        super_aggregator: Super Aggregator result (only for parallel mode)
+        council_metadata: Optional Council metadata (aggregate_rankings, label_to_model)
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    message = {
+        "role": "assistant",
+        "execution_mode": execution_mode,
+        "council": {
+            "stage1": council_stage1,
+            "stage2": council_stage2,
+            "stage3": council_stage3
+        },
+        "dxo": {
+            "stage1": dxo_stage1,
+            "stage2": dxo_stage2,
+            "stage3": dxo_stage3,
+            "stage4": dxo_stage4
+        }
+    }
+    
+    # Add Council metadata if provided
+    if council_metadata:
+        if "aggregate_rankings" in council_metadata:
+            message["council"]["aggregate_rankings"] = council_metadata["aggregate_rankings"]
+        if "label_to_model" in council_metadata:
+            message["council"]["label_to_model"] = council_metadata["label_to_model"]
+    
+    # Add Super Aggregator result for parallel mode
+    if super_aggregator is not None:
+        message["super_aggregator"] = super_aggregator
+
+    conversation["messages"].append(message)
+    save_conversation(conversation)
+
+
 def update_conversation_title(conversation_id: str, title: str):
     """
     Update the title of a conversation.

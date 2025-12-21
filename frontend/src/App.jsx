@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-r
 import Layout from './components/Layout/Layout';
 import CouncilPage from './components/Council/CouncilPage';
 import DxOPage from './components/DxO/DxOPage';
+import SuperChatPage from './components/SuperChat/SuperChatPage';
 import ComingSoon from './components/ComingSoon';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -17,6 +18,12 @@ function DxOPageWrapper() {
   return <DxOPage selectedConversationId={conversationId} />;
 }
 
+function SuperChatPageWrapper() {
+  const [searchParams] = useSearchParams();
+  const conversationId = searchParams.get('conversation');
+  return <SuperChatPage selectedConversationId={conversationId} />;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -25,7 +32,7 @@ function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/council" replace />} />
             <Route path="council" element={<CouncilPageWrapper />} />
-            <Route path="super-chat" element={<ComingSoon />} />
+            <Route path="super-chat" element={<SuperChatPageWrapper />} />
             <Route path="dxo" element={<DxOPageWrapper />} />
             <Route path="ensemble" element={<ComingSoon />} />
             <Route path="shoppr" element={<ComingSoon />} />

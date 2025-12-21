@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Groq API key
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "ENTER_YOUR_GROQ_API_KEY_HERE")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Council members - list of Groq model identifiers
 COUNCIL_MODELS = [
@@ -23,6 +23,9 @@ LEAD_RESEARCH_MODEL = "openai/gpt-oss-20b"  # Breadth-first research
 CRITIC_MODEL = "moonshotai/kimi-k2-instruct-0905"  # Critiques research
 DOMAIN_EXPERT_MODEL = "llama-3.1-8b-instant"  # Domain expertise
 AGGREGATOR_MODEL = "openai/gpt-oss-120b"  # Synthesizes final response
+
+# Super Chat aggregator (for parallel mode)
+SUPER_AGGREGATOR_MODEL = "openai/gpt-oss-120b"  # Aggregates Council and DxO results
 
 # Data directory for conversation storage
 # Use absolute path for Docker compatibility

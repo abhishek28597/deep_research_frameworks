@@ -19,10 +19,14 @@ if __name__ == "__main__":
     from backend import storage
     from backend.council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
     from backend.DxO import run_full_dxo, generate_conversation_title as generate_dxo_title, stage1_lead_research, stage2_critic_analysis, stage3_domain_expertise, stage4_aggregate_synthesis
+    from backend.superchat_seq import run_sequential_superchat, stage1_lead_research_with_council, stage2_critic_analysis_with_council, stage3_domain_expertise_with_council, stage4_aggregate_synthesis_with_council
+    from backend.superchat_parallel import run_parallel_superchat, run_super_aggregator
 else:
     from . import storage
     from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
     from .DxO import run_full_dxo, generate_conversation_title as generate_dxo_title, stage1_lead_research, stage2_critic_analysis, stage3_domain_expertise, stage4_aggregate_synthesis
+    from .superchat_seq import run_sequential_superchat, stage1_lead_research_with_council, stage2_critic_analysis_with_council, stage3_domain_expertise_with_council, stage4_aggregate_synthesis_with_council
+    from .superchat_parallel import run_parallel_superchat, run_super_aggregator
 
 app = FastAPI(title="LLM Council API")
 
@@ -45,6 +49,7 @@ class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
     user_instructions: Optional[Dict[str, str]] = None  # For DxO mode: keys: lead_research, critic, domain_expert, aggregator
+    execution_mode: Optional[str] = None  # For Super Chat mode: "sequential" or "parallel"
 
 
 class ConversationMetadata(BaseModel):
@@ -114,12 +119,86 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     if is_first_message:
         if mode == "DxO":
             title = await generate_dxo_title(request.content)
+        elif mode == "Super Chat":
+            title = await generate_conversation_title(request.content)
         else:
             title = await generate_conversation_title(request.content)
         storage.update_conversation_title(conversation_id, title)
 
     # Route to appropriate handler based on mode
-    if mode == "DxO":
+    if mode == "Super Chat":
+        # Super Chat mode: sequential or parallel
+        execution_mode = request.execution_mode or "sequential"
+        
+        if execution_mode == "sequential":
+            # Sequential: Council → DxO
+            council_stage1, council_stage2, council_stage3, dxo_stage1, dxo_stage2, dxo_stage3, dxo_stage4 = await run_sequential_superchat(
+                request.content
+            )
+            
+            # Add assistant message
+            storage.add_superchat_assistant_message(
+                conversation_id,
+                "sequential",
+                council_stage1,
+                council_stage2,
+                council_stage3,
+                dxo_stage1,
+                dxo_stage2,
+                dxo_stage3,
+                dxo_stage4
+            )
+            
+            return {
+                "execution_mode": "sequential",
+                "council": {
+                    "stage1": council_stage1,
+                    "stage2": council_stage2,
+                    "stage3": council_stage3
+                },
+                "dxo": {
+                    "stage1": dxo_stage1,
+                    "stage2": dxo_stage2,
+                    "stage3": dxo_stage3,
+                    "stage4": dxo_stage4
+                }
+            }
+        else:
+            # Parallel: Council || DxO → Super Aggregator
+            council_stage1, council_stage2, council_stage3, dxo_stage1, dxo_stage2, dxo_stage3, dxo_stage4, super_aggregator = await run_parallel_superchat(
+                request.content
+            )
+            
+            # Add assistant message
+            storage.add_superchat_assistant_message(
+                conversation_id,
+                "parallel",
+                council_stage1,
+                council_stage2,
+                council_stage3,
+                dxo_stage1,
+                dxo_stage2,
+                dxo_stage3,
+                dxo_stage4,
+                super_aggregator=super_aggregator
+            )
+            
+            return {
+                "execution_mode": "parallel",
+                "council": {
+                    "stage1": council_stage1,
+                    "stage2": council_stage2,
+                    "stage3": council_stage3
+                },
+                "dxo": {
+                    "stage1": dxo_stage1,
+                    "stage2": dxo_stage2,
+                    "stage3": dxo_stage3,
+                    "stage4": dxo_stage4
+                },
+                "super_aggregator": super_aggregator
+            }
+    elif mode == "DxO":
         # Run the 4-stage DxO process
         stage1_result, stage2_result, stage3_result, stage4_result = await run_full_dxo(
             request.content,
@@ -191,10 +270,118 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             if is_first_message:
                 if mode == "DxO":
                     title_task = asyncio.create_task(generate_dxo_title(request.content))
+                elif mode == "Super Chat":
+                    title_task = asyncio.create_task(generate_conversation_title(request.content))
                 else:
                     title_task = asyncio.create_task(generate_conversation_title(request.content))
 
-            if mode == "DxO":
+            if mode == "Super Chat":
+                # Super Chat mode: sequential or parallel
+                execution_mode = request.execution_mode or "sequential"
+                
+                if execution_mode == "sequential":
+                    # Sequential: Council → DxO
+                    # Council Stage 1
+                    yield f"data: {json.dumps({'type': 'council_stage1_start'})}\n\n"
+                    council_stage1 = await stage1_collect_responses(request.content)
+                    yield f"data: {json.dumps({'type': 'council_stage1_complete', 'data': council_stage1})}\n\n"
+                    
+                    # Council Stage 2
+                    yield f"data: {json.dumps({'type': 'council_stage2_start'})}\n\n"
+                    council_stage2, label_to_model = await stage2_collect_rankings(request.content, council_stage1)
+                    aggregate_rankings = calculate_aggregate_rankings(council_stage2, label_to_model)
+                    yield f"data: {json.dumps({'type': 'council_stage2_complete', 'data': council_stage2, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+                    
+                    # Council Stage 3
+                    yield f"data: {json.dumps({'type': 'council_stage3_start'})}\n\n"
+                    council_stage3 = await stage3_synthesize_final(request.content, council_stage1, council_stage2)
+                    yield f"data: {json.dumps({'type': 'council_stage3_complete', 'data': council_stage3})}\n\n"
+                    
+                    # DxO Stage 1: Lead Research (with Council context)
+                    yield f"data: {json.dumps({'type': 'dxo_stage1_start'})}\n\n"
+                    dxo_stage1 = await stage1_lead_research_with_council(request.content, council_stage3)
+                    yield f"data: {json.dumps({'type': 'dxo_stage1_complete', 'data': dxo_stage1})}\n\n"
+                    
+                    # DxO Stage 2: Critic
+                    yield f"data: {json.dumps({'type': 'dxo_stage2_start'})}\n\n"
+                    dxo_stage2 = await stage2_critic_analysis_with_council(request.content, council_stage3, dxo_stage1)
+                    yield f"data: {json.dumps({'type': 'dxo_stage2_complete', 'data': dxo_stage2})}\n\n"
+                    
+                    # DxO Stage 3: Domain Expert
+                    yield f"data: {json.dumps({'type': 'dxo_stage3_start'})}\n\n"
+                    dxo_stage3 = await stage3_domain_expertise_with_council(request.content, council_stage3, dxo_stage1, dxo_stage2)
+                    yield f"data: {json.dumps({'type': 'dxo_stage3_complete', 'data': dxo_stage3})}\n\n"
+                    
+                    # DxO Stage 4: Aggregator
+                    yield f"data: {json.dumps({'type': 'dxo_stage4_start'})}\n\n"
+                    dxo_stage4 = await stage4_aggregate_synthesis_with_council(request.content, council_stage3, dxo_stage1, dxo_stage2, dxo_stage3)
+                    yield f"data: {json.dumps({'type': 'dxo_stage4_complete', 'data': dxo_stage4})}\n\n"
+                    
+                    # Save complete assistant message
+                    storage.add_superchat_assistant_message(
+                        conversation_id,
+                        "sequential",
+                        council_stage1,
+                        council_stage2,
+                        council_stage3,
+                        dxo_stage1,
+                        dxo_stage2,
+                        dxo_stage3,
+                        dxo_stage4,
+                        council_metadata={"aggregate_rankings": aggregate_rankings, "label_to_model": label_to_model}
+                    )
+                else:
+                    # Parallel: Council || DxO → Super Aggregator
+                    # Start both processes
+                    yield f"data: {json.dumps({'type': 'council_start'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'dxo_start'})}\n\n"
+                    
+                    # Run Council and DxO in parallel
+                    council_task = run_full_council(request.content)
+                    dxo_task = run_full_dxo(request.content)
+                    
+                    # Track progress - we'll need to manually stream stages
+                    # For simplicity, we'll run them and then stream completion
+                    # In a more sophisticated implementation, we could stream individual stages
+                    council_result, dxo_result = await asyncio.gather(council_task, dxo_task)
+                    
+                    council_stage1, council_stage2, council_stage3, council_metadata = council_result
+                    dxo_stage1, dxo_stage2, dxo_stage3, dxo_stage4 = dxo_result
+                    
+                    # Stream Council completion
+                    yield f"data: {json.dumps({'type': 'council_stage1_complete', 'data': council_stage1})}\n\n"
+                    yield f"data: {json.dumps({'type': 'council_stage2_complete', 'data': council_stage2, 'metadata': council_metadata})}\n\n"
+                    yield f"data: {json.dumps({'type': 'council_stage3_complete', 'data': council_stage3})}\n\n"
+                    
+                    # Extract metadata for storage
+                    council_meta = council_metadata or {}
+                    
+                    # Stream DxO completion
+                    yield f"data: {json.dumps({'type': 'dxo_stage1_complete', 'data': dxo_stage1})}\n\n"
+                    yield f"data: {json.dumps({'type': 'dxo_stage2_complete', 'data': dxo_stage2})}\n\n"
+                    yield f"data: {json.dumps({'type': 'dxo_stage3_complete', 'data': dxo_stage3})}\n\n"
+                    yield f"data: {json.dumps({'type': 'dxo_stage4_complete', 'data': dxo_stage4})}\n\n"
+                    
+                    # Super Aggregator
+                    yield f"data: {json.dumps({'type': 'aggregation_start'})}\n\n"
+                    super_aggregator = await run_super_aggregator(request.content, council_stage3, dxo_stage4)
+                    yield f"data: {json.dumps({'type': 'aggregation_complete', 'data': super_aggregator})}\n\n"
+                    
+                    # Save complete assistant message
+                    storage.add_superchat_assistant_message(
+                        conversation_id,
+                        "parallel",
+                        council_stage1,
+                        council_stage2,
+                        council_stage3,
+                        dxo_stage1,
+                        dxo_stage2,
+                        dxo_stage3,
+                        dxo_stage4,
+                        super_aggregator=super_aggregator,
+                        council_metadata=council_meta
+                    )
+            elif mode == "DxO":
                 # DxO 4-stage process
                 # Stage 1: Lead Research
                 yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"

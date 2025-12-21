@@ -78,15 +78,17 @@ export default function Navbar() {
       <ConversationHistory
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        onSelectConversation={(convId) => {
-          // Navigate to appropriate page based on current location
-          const currentPath = location.pathname;
-          if (currentPath === '/council') {
-            navigate(`/council?conversation=${convId}`);
-          } else if (currentPath === '/dxo') {
+        onSelectConversation={(convId, conversationMode) => {
+          // Navigate to appropriate page based on conversation mode
+          const mode = conversationMode || 'Council';
+          if (mode === 'Super Chat') {
+            navigate(`/super-chat?conversation=${convId}`);
+          } else if (mode === 'DxO') {
             navigate(`/dxo?conversation=${convId}`);
+          } else if (mode === 'Council') {
+            navigate(`/council?conversation=${convId}`);
           } else {
-            // Default to council
+            // Default to council for unknown modes
             navigate(`/council?conversation=${convId}`);
           }
         }}

@@ -192,7 +192,7 @@ export default function ConversationHistory({ isOpen, onClose, onSelectConversat
                         <div className="flex items-start justify-between mb-2">
                           <button
                             onClick={() => {
-                              onSelectConversation(conv.id);
+                              onSelectConversation(conv.id, conv.mode || 'Council');
                               onClose();
                             }}
                             className="flex-1 text-left"
