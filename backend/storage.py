@@ -308,3 +308,22 @@ def update_conversation_title(conversation_id: str, title: str):
 
     conversation["title"] = title
     save_conversation(conversation)
+
+
+def update_conversation_instructions(conversation_id: str, user_instructions: Dict[str, Any]):
+    """
+    Update user instructions for a conversation.
+
+    Args:
+        conversation_id: Conversation identifier
+        user_instructions: Dict containing user instructions
+            - For Council: {"council_models": {model_id: instruction}, "chairman": instruction}
+            - For DxO: {"dxo_agents": {agent_id: instruction}}
+            - For SuperChat: {"council_models": {...}, "chairman": ..., "dxo_agents": {...}}
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    conversation["user_instructions"] = user_instructions
+    save_conversation(conversation)

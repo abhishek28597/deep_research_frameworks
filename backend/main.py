@@ -3,7 +3,7 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Dict, Any, Optional
 import uuid
 import json
@@ -48,7 +48,7 @@ class CreateConversationRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
-    user_instructions: Optional[Dict[str, str]] = None  # For DxO mode: keys: lead_research, critic, domain_expert, aggregator
+    user_instructions: Optional[Dict[str, str]] = None  # For DxO mode: keys: lead_research, critic, domain_expert, aggregator. For Council mode: keys: model IDs for council models, "chairman" for chairman model
     execution_mode: Optional[str] = None  # For Super Chat mode: "sequential" or "parallel"
 
 
@@ -63,10 +63,13 @@ class ConversationMetadata(BaseModel):
 
 class Conversation(BaseModel):
     """Full conversation with all messages."""
+    model_config = ConfigDict(extra='allow')  # Allow extra fields from JSON
+    
     id: str
     created_at: str
     title: str
     messages: List[Dict[str, Any]]
+    user_instructions: Optional[Dict[str, str]] = None
 
 
 @app.get("/")
@@ -115,6 +118,11 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     # Add user message
     storage.add_user_message(conversation_id, request.content)
 
+    # Save user instructions if provided (check if dict has any non-empty values)
+    if request.user_instructions and any(v and v.strip() for v in request.user_instructions.values()):
+        print(f"Saving user instructions for conversation {conversation_id}: {request.user_instructions}")
+        storage.update_conversation_instructions(conversation_id, request.user_instructions)
+
     # Generate title based on mode
     if is_first_message:
         if mode == "DxO":
@@ -130,10 +138,33 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         # Super Chat mode: sequential or parallel
         execution_mode = request.execution_mode or "sequential"
         
+        # Extract council and DxO instructions from user_instructions
+        council_user_instructions = {}
+        council_chairman_instruction = None
+        dxo_user_instructions = {}
+        
+        if request.user_instructions:
+            # DxO agent keys
+            dxo_keys = {'lead_research', 'critic', 'domain_expert', 'aggregator'}
+            # Council keys
+            council_keys = {'openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905', 'chairman'}
+            
+            for key, value in request.user_instructions.items():
+                if key == "chairman":
+                    council_chairman_instruction = value
+                elif key in dxo_keys:
+                    dxo_user_instructions[key] = value
+                elif key in council_keys or key.startswith('openai/') or key.startswith('llama-') or key.startswith('moonshotai/'):
+                    # Council model instruction
+                    council_user_instructions[key] = value
+        
         if execution_mode == "sequential":
             # Sequential: Council → DxO
             council_stage1, council_stage2, council_stage3, dxo_stage1, dxo_stage2, dxo_stage3, dxo_stage4 = await run_sequential_superchat(
-                request.content
+                request.content,
+                council_user_instructions=council_user_instructions if council_user_instructions else None,
+                council_chairman_instruction=council_chairman_instruction,
+                dxo_user_instructions=dxo_user_instructions if dxo_user_instructions else None
             )
             
             # Add assistant message
@@ -166,7 +197,10 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         else:
             # Parallel: Council || DxO → Super Aggregator
             council_stage1, council_stage2, council_stage3, dxo_stage1, dxo_stage2, dxo_stage3, dxo_stage4, super_aggregator = await run_parallel_superchat(
-                request.content
+                request.content,
+                council_user_instructions=council_user_instructions if council_user_instructions else None,
+                council_chairman_instruction=council_chairman_instruction,
+                dxo_user_instructions=dxo_user_instructions if dxo_user_instructions else None
             )
             
             # Add assistant message
@@ -223,8 +257,23 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         }
     else:
         # Run the 3-stage council process
+        # Extract council model instructions and chairman instruction from user_instructions
+        council_user_instructions = {}
+        chairman_instruction = None
+        
+        if request.user_instructions:
+            # Separate council model instructions from chairman instruction
+            for key, value in request.user_instructions.items():
+                if key == "chairman":
+                    chairman_instruction = value
+                else:
+                    # Assume other keys are council model IDs
+                    council_user_instructions[key] = value
+        
         stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-            request.content
+            request.content,
+            user_instructions=council_user_instructions if council_user_instructions else None,
+            chairman_instruction=chairman_instruction
         )
 
         # Add assistant message with all stages
@@ -265,6 +314,11 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Add user message
             storage.add_user_message(conversation_id, request.content)
 
+            # Save user instructions if provided (check if dict has any non-empty values)
+            if request.user_instructions and any(v and v.strip() for v in request.user_instructions.values()):
+                print(f"Saving user instructions for conversation {conversation_id}: {request.user_instructions}")
+                storage.update_conversation_instructions(conversation_id, request.user_instructions)
+
             # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
@@ -279,11 +333,34 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 # Super Chat mode: sequential or parallel
                 execution_mode = request.execution_mode or "sequential"
                 
+                # Extract council and DxO instructions from user_instructions
+                council_user_instructions = {}
+                council_chairman_instruction = None
+                dxo_user_instructions = {}
+                
+                if request.user_instructions:
+                    # DxO agent keys
+                    dxo_keys = {'lead_research', 'critic', 'domain_expert', 'aggregator'}
+                    # Council keys
+                    council_keys = {'openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905', 'chairman'}
+                    
+                    for key, value in request.user_instructions.items():
+                        if key == "chairman":
+                            council_chairman_instruction = value
+                        elif key in dxo_keys:
+                            dxo_user_instructions[key] = value
+                        elif key in council_keys or key.startswith('openai/') or key.startswith('llama-') or key.startswith('moonshotai/'):
+                            # Council model instruction
+                            council_user_instructions[key] = value
+                
                 if execution_mode == "sequential":
                     # Sequential: Council → DxO
                     # Council Stage 1
                     yield f"data: {json.dumps({'type': 'council_stage1_start'})}\n\n"
-                    council_stage1 = await stage1_collect_responses(request.content)
+                    council_stage1 = await stage1_collect_responses(
+                        request.content,
+                        user_instructions=council_user_instructions if council_user_instructions else None
+                    )
                     yield f"data: {json.dumps({'type': 'council_stage1_complete', 'data': council_stage1})}\n\n"
                     
                     # Council Stage 2
@@ -294,27 +371,54 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     
                     # Council Stage 3
                     yield f"data: {json.dumps({'type': 'council_stage3_start'})}\n\n"
-                    council_stage3 = await stage3_synthesize_final(request.content, council_stage1, council_stage2)
+                    council_stage3 = await stage3_synthesize_final(
+                        request.content,
+                        council_stage1,
+                        council_stage2,
+                        chairman_instruction=council_chairman_instruction
+                    )
                     yield f"data: {json.dumps({'type': 'council_stage3_complete', 'data': council_stage3})}\n\n"
                     
                     # DxO Stage 1: Lead Research (with Council context)
                     yield f"data: {json.dumps({'type': 'dxo_stage1_start'})}\n\n"
-                    dxo_stage1 = await stage1_lead_research_with_council(request.content, council_stage3)
+                    dxo_stage1 = await stage1_lead_research_with_council(
+                        request.content,
+                        council_stage3,
+                        user_instruction=dxo_user_instructions.get('lead_research') if dxo_user_instructions else None
+                    )
                     yield f"data: {json.dumps({'type': 'dxo_stage1_complete', 'data': dxo_stage1})}\n\n"
                     
                     # DxO Stage 2: Critic
                     yield f"data: {json.dumps({'type': 'dxo_stage2_start'})}\n\n"
-                    dxo_stage2 = await stage2_critic_analysis_with_council(request.content, council_stage3, dxo_stage1)
+                    dxo_stage2 = await stage2_critic_analysis_with_council(
+                        request.content,
+                        council_stage3,
+                        dxo_stage1,
+                        user_instruction=dxo_user_instructions.get('critic') if dxo_user_instructions else None
+                    )
                     yield f"data: {json.dumps({'type': 'dxo_stage2_complete', 'data': dxo_stage2})}\n\n"
                     
                     # DxO Stage 3: Domain Expert
                     yield f"data: {json.dumps({'type': 'dxo_stage3_start'})}\n\n"
-                    dxo_stage3 = await stage3_domain_expertise_with_council(request.content, council_stage3, dxo_stage1, dxo_stage2)
+                    dxo_stage3 = await stage3_domain_expertise_with_council(
+                        request.content,
+                        council_stage3,
+                        dxo_stage1,
+                        dxo_stage2,
+                        user_instruction=dxo_user_instructions.get('domain_expert') if dxo_user_instructions else None
+                    )
                     yield f"data: {json.dumps({'type': 'dxo_stage3_complete', 'data': dxo_stage3})}\n\n"
                     
                     # DxO Stage 4: Aggregator
                     yield f"data: {json.dumps({'type': 'dxo_stage4_start'})}\n\n"
-                    dxo_stage4 = await stage4_aggregate_synthesis_with_council(request.content, council_stage3, dxo_stage1, dxo_stage2, dxo_stage3)
+                    dxo_stage4 = await stage4_aggregate_synthesis_with_council(
+                        request.content,
+                        council_stage3,
+                        dxo_stage1,
+                        dxo_stage2,
+                        dxo_stage3,
+                        user_instruction=dxo_user_instructions.get('aggregator') if dxo_user_instructions else None
+                    )
                     yield f"data: {json.dumps({'type': 'dxo_stage4_complete', 'data': dxo_stage4})}\n\n"
                     
                     # Save complete assistant message
@@ -337,8 +441,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     yield f"data: {json.dumps({'type': 'dxo_start'})}\n\n"
                     
                     # Run Council and DxO in parallel
-                    council_task = run_full_council(request.content)
-                    dxo_task = run_full_dxo(request.content)
+                    council_task = run_full_council(
+                        request.content,
+                        user_instructions=council_user_instructions if council_user_instructions else None,
+                        chairman_instruction=council_chairman_instruction
+                    )
+                    dxo_task = run_full_dxo(request.content, user_instructions=dxo_user_instructions if dxo_user_instructions else None)
                     
                     # Track progress - we'll need to manually stream stages
                     # For simplicity, we'll run them and then stream completion
@@ -431,20 +539,44 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 )
             else:
                 # Council 3-stage process
+                # Extract council model instructions and chairman instruction from user_instructions
+                council_user_instructions = {}
+                chairman_instruction = None
+                
+                if request.user_instructions:
+                    # Separate council model instructions from chairman instruction
+                    for key, value in request.user_instructions.items():
+                        if key == "chairman":
+                            chairman_instruction = value
+                        else:
+                            # Assume other keys are council model IDs
+                            council_user_instructions[key] = value
+                
                 # Stage 1: Collect responses
                 yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-                stage1_results = await stage1_collect_responses(request.content)
+                stage1_results = await stage1_collect_responses(
+                    request.content,
+                    user_instructions=council_user_instructions if council_user_instructions else None
+                )
                 yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
                 # Stage 2: Collect rankings
                 yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-                stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
+                stage2_results, label_to_model = await stage2_collect_rankings(
+                    request.content,
+                    stage1_results
+                )
                 aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
                 yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
                 # Stage 3: Synthesize final answer
                 yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-                stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+                stage3_result = await stage3_synthesize_final(
+                    request.content,
+                    stage1_results,
+                    stage2_results,
+                    chairman_instruction=chairman_instruction
+                )
                 yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
                 # Save complete assistant message

@@ -22,8 +22,21 @@ export default function DxOPage({ selectedConversationId = null }) {
 
   // Load conversation history when a conversation is selected
   useEffect(() => {
-    if (selectedConversationId && selectedConversationId !== conversationId) {
+    if (selectedConversationId) {
+      // Always load when selectedConversationId changes, even if it's the same as conversationId
+      // This handles the case where we navigate to a conversation from history
       loadConversation(selectedConversationId);
+    } else if (selectedConversationId === null && conversationId) {
+      // Clear conversation if selectedConversationId is explicitly null
+      setConversationId(null);
+      setMessages([]);
+      // Reset instructions to empty
+      setUserInstructions({
+        lead_research: '',
+        critic: '',
+        domain_expert: '',
+        aggregator: ''
+      });
     }
   }, [selectedConversationId]);
 
@@ -55,6 +68,28 @@ export default function DxOPage({ selectedConversationId = null }) {
           return null;
         }).filter(Boolean);
         setMessages(formattedMessages);
+        
+        // Load user instructions from conversation if available
+        console.log('Loading conversation, user_instructions:', conversation.user_instructions);
+        if (conversation.user_instructions && Object.keys(conversation.user_instructions).length > 0) {
+          const loadedInstructions = {
+            lead_research: conversation.user_instructions['lead_research'] || '',
+            critic: conversation.user_instructions['critic'] || '',
+            domain_expert: conversation.user_instructions['domain_expert'] || '',
+            aggregator: conversation.user_instructions['aggregator'] || ''
+          };
+          console.log('Loaded instructions:', loadedInstructions);
+          setUserInstructions(loadedInstructions);
+        } else {
+          // Reset to empty if no instructions found
+          console.log('No instructions found, resetting to empty');
+          setUserInstructions({
+            lead_research: '',
+            critic: '',
+            domain_expert: '',
+            aggregator: ''
+          });
+        }
       }
     } catch (err) {
       setError(err.message || 'Failed to load conversation');
@@ -205,6 +240,13 @@ export default function DxOPage({ selectedConversationId = null }) {
             onClick={() => {
               setConversationId(null);
               setMessages([]);
+              // Reset instructions to empty
+              setUserInstructions({
+                lead_research: '',
+                critic: '',
+                domain_expert: '',
+                aggregator: ''
+              });
               navigate('/dxo');
             }}
             className="px-4 py-2 text-sm bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors"

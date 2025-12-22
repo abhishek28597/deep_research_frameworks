@@ -14,11 +14,33 @@ export default function CouncilPage({ selectedConversationId = null }) {
   const [error, setError] = useState(null);
   const [conversationId, setConversationId] = useState(selectedConversationId);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [userInstructions, setUserInstructions] = useState({
+    'openai/gpt-oss-20b': '',
+    'llama-3.1-8b-instant': '',
+    'moonshotai/kimi-k2-instruct-0905': '',
+    'chairman': ''
+  });
 
   // Load conversation history when a conversation is selected
   useEffect(() => {
-    if (selectedConversationId && selectedConversationId !== conversationId) {
+    if (selectedConversationId) {
+      // Always load when selectedConversationId changes, even if it's the same as conversationId
+      // This handles the case where we navigate to a conversation from history
       loadConversation(selectedConversationId);
+    } else if (selectedConversationId === null && conversationId) {
+      // Clear conversation if selectedConversationId is explicitly null (no conversation in URL)
+      // Only clear if we actually had a conversation loaded
+      setConversationId(null);
+      setMessages([]);
+      setCurrentStage(0);
+      setError(null);
+      // Reset instructions to empty
+      setUserInstructions({
+        'openai/gpt-oss-20b': '',
+        'llama-3.1-8b-instant': '',
+        'moonshotai/kimi-k2-instruct-0905': '',
+        'chairman': ''
+      });
     }
   }, [selectedConversationId]);
 
@@ -51,6 +73,29 @@ export default function CouncilPage({ selectedConversationId = null }) {
           return null;
         }).filter(Boolean);
         setMessages(formattedMessages);
+        
+        // Load user instructions from conversation if available
+        console.log('Loading conversation, user_instructions:', conversation.user_instructions);
+        if (conversation.user_instructions && Object.keys(conversation.user_instructions).length > 0) {
+          const loadedInstructions = {
+            'openai/gpt-oss-20b': conversation.user_instructions['openai/gpt-oss-20b'] || '',
+            'llama-3.1-8b-instant': conversation.user_instructions['llama-3.1-8b-instant'] || '',
+            'moonshotai/kimi-k2-instruct-0905': conversation.user_instructions['moonshotai/kimi-k2-instruct-0905'] || '',
+            'chairman': conversation.user_instructions['chairman'] || ''
+          };
+          console.log('Loaded instructions:', loadedInstructions);
+          console.log('Setting userInstructions state with:', loadedInstructions);
+          setUserInstructions(loadedInstructions);
+        } else {
+          // Reset to empty if no instructions found
+          console.log('No instructions found, resetting to empty');
+          setUserInstructions({
+            'openai/gpt-oss-20b': '',
+            'llama-3.1-8b-instant': '',
+            'moonshotai/kimi-k2-instruct-0905': '',
+            'chairman': ''
+          });
+        }
       }
     } catch (err) {
       setError(err.message || 'Failed to load conversation');
@@ -97,6 +142,14 @@ export default function CouncilPage({ selectedConversationId = null }) {
         convId = conversation.id;
         setConversationId(convId);
       }
+
+      // Prepare user instructions (only include non-empty ones)
+      const instructionsToSend = Object.keys(userInstructions).reduce((acc, key) => {
+        if (userInstructions[key] && userInstructions[key].trim()) {
+          acc[key] = userInstructions[key].trim();
+        }
+        return acc;
+      }, {});
 
       // Send message and stream response
       await sendMessageStream(convId, query, (event) => {
@@ -166,7 +219,7 @@ export default function CouncilPage({ selectedConversationId = null }) {
           default:
             break;
         }
-      });
+      }, Object.keys(instructionsToSend).length > 0 ? instructionsToSend : null);
     } catch (err) {
       console.error('Error in handleSubmit:', err);
       setError(err.message || 'Failed to process your request');
@@ -183,9 +236,8 @@ export default function CouncilPage({ selectedConversationId = null }) {
         {conversationId && (
           <button
             onClick={() => {
-              setConversationId(null);
-              setMessages([]);
-              navigate('/council');
+              // Navigate first to clear URL params, which will trigger useEffect to clear state
+              navigate('/council', { replace: true });
             }}
             className="px-4 py-2 text-sm bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors"
           >
@@ -207,8 +259,14 @@ export default function CouncilPage({ selectedConversationId = null }) {
         </div>
       ) : (
         <>
-          <CouncilMembers />
-          <ChairmanModel />
+          <CouncilMembers 
+            instructions={userInstructions}
+            onChange={setUserInstructions}
+          />
+          <ChairmanModel 
+            instruction={userInstructions.chairman || ''}
+            onChange={(value) => setUserInstructions(prev => ({ ...prev, chairman: value }))}
+          />
           <ResearchPrompt onSubmit={handleSubmit} isLoading={isLoading} />
           
           {messages.length > 0 ? (

@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { createConversation, sendMessageStream, getConversation } from '../../services/api';
 import ResearchPrompt from '../Council/ResearchPrompt';
 import SuperChatChatDisplay from './SuperChatChatDisplay';
+import CouncilMembers from '../Council/CouncilMembers';
+import ChairmanModel from '../Council/ChairmanModel';
+import DxOAgents from '../DxO/DxOAgents';
+import CollapsibleSection from '../Council/CollapsibleSection';
 
 export default function SuperChatPage({ selectedConversationId = null }) {
   const navigate = useNavigate();
@@ -13,6 +17,19 @@ export default function SuperChatPage({ selectedConversationId = null }) {
   const [conversationId, setConversationId] = useState(selectedConversationId);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [executionMode, setExecutionMode] = useState('sequential'); // 'sequential' or 'parallel'
+  const [isEditingInstructions, setIsEditingInstructions] = useState(false);
+  const [councilInstructions, setCouncilInstructions] = useState({
+    'openai/gpt-oss-20b': '',
+    'llama-3.1-8b-instant': '',
+    'moonshotai/kimi-k2-instruct-0905': '',
+    'chairman': ''
+  });
+  const [dxoInstructions, setDxoInstructions] = useState({
+    lead_research: '',
+    critic: '',
+    domain_expert: '',
+    aggregator: ''
+  });
 
   // Load conversation history when a conversation is selected
   useEffect(() => {
@@ -59,6 +76,48 @@ export default function SuperChatPage({ selectedConversationId = null }) {
         if (formattedMessages.length > 0 && formattedMessages[0].execution_mode) {
           setExecutionMode(formattedMessages[0].execution_mode);
         }
+        
+        // Load user instructions from conversation if available
+        console.log('Loading conversation, user_instructions:', conversation.user_instructions);
+        if (conversation.user_instructions && Object.keys(conversation.user_instructions).length > 0) {
+          // Separate council and DxO instructions
+          const dxoKeys = ['lead_research', 'critic', 'domain_expert', 'aggregator'];
+          const councilKeys = ['openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905', 'chairman'];
+          
+          const loadedCouncilInstructions = {
+            'openai/gpt-oss-20b': conversation.user_instructions['openai/gpt-oss-20b'] || '',
+            'llama-3.1-8b-instant': conversation.user_instructions['llama-3.1-8b-instant'] || '',
+            'moonshotai/kimi-k2-instruct-0905': conversation.user_instructions['moonshotai/kimi-k2-instruct-0905'] || '',
+            'chairman': conversation.user_instructions['chairman'] || ''
+          };
+          
+          const loadedDxoInstructions = {
+            lead_research: conversation.user_instructions['lead_research'] || '',
+            critic: conversation.user_instructions['critic'] || '',
+            domain_expert: conversation.user_instructions['domain_expert'] || '',
+            aggregator: conversation.user_instructions['aggregator'] || ''
+          };
+          
+          console.log('Loaded council instructions:', loadedCouncilInstructions);
+          console.log('Loaded DxO instructions:', loadedDxoInstructions);
+          setCouncilInstructions(loadedCouncilInstructions);
+          setDxoInstructions(loadedDxoInstructions);
+        } else {
+          // Reset to empty if no instructions found
+          console.log('No instructions found, resetting to empty');
+          setCouncilInstructions({
+            'openai/gpt-oss-20b': '',
+            'llama-3.1-8b-instant': '',
+            'moonshotai/kimi-k2-instruct-0905': '',
+            'chairman': ''
+          });
+          setDxoInstructions({
+            lead_research: '',
+            critic: '',
+            domain_expert: '',
+            aggregator: ''
+          });
+        }
       }
     } catch (err) {
       setError(err.message || 'Failed to load conversation');
@@ -100,6 +159,23 @@ export default function SuperChatPage({ selectedConversationId = null }) {
         convId = conversation.id;
         setConversationId(convId);
       }
+
+      // Prepare user instructions (combine council and DxO instructions)
+      const allInstructions = {};
+      
+      // Add council instructions
+      Object.keys(councilInstructions).forEach(key => {
+        if (councilInstructions[key] && councilInstructions[key].trim()) {
+          allInstructions[key] = councilInstructions[key].trim();
+        }
+      });
+      
+      // Add DxO instructions
+      Object.keys(dxoInstructions).forEach(key => {
+        if (dxoInstructions[key] && dxoInstructions[key].trim()) {
+          allInstructions[key] = dxoInstructions[key].trim();
+        }
+      });
 
       // Send message and stream response
       await sendMessageStream(convId, query, (event) => {
@@ -329,7 +405,7 @@ export default function SuperChatPage({ selectedConversationId = null }) {
               break;
           }
         }
-      }, null, executionMode);
+      }, Object.keys(allInstructions).length > 0 ? allInstructions : null, executionMode);
     } catch (err) {
       console.error('Error in handleSubmit:', err);
       setError(err.message || 'Failed to process your request');
@@ -348,6 +424,19 @@ export default function SuperChatPage({ selectedConversationId = null }) {
             onClick={() => {
               setConversationId(null);
               setMessages([]);
+              // Reset instructions to empty
+              setCouncilInstructions({
+                'openai/gpt-oss-20b': '',
+                'llama-3.1-8b-instant': '',
+                'moonshotai/kimi-k2-instruct-0905': '',
+                'chairman': ''
+              });
+              setDxoInstructions({
+                lead_research: '',
+                critic: '',
+                domain_expert: '',
+                aggregator: ''
+              });
               navigate('/super-chat');
             }}
             className="px-4 py-2 text-sm bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors"
@@ -370,43 +459,96 @@ export default function SuperChatPage({ selectedConversationId = null }) {
         </div>
       ) : (
         <>
-          {/* Execution Mode Selector */}
-          <div className="mb-6 p-4 bg-slate-800 border border-slate-700 rounded-lg">
-            <label className="block text-sm font-medium text-slate-300 mb-3">
-              Execution Mode
-            </label>
-            <div className="flex space-x-4">
-              <label className="flex items-center cursor-pointer">
-                <input
-                  type="radio"
-                  name="executionMode"
-                  value="sequential"
-                  checked={executionMode === 'sequential'}
-                  onChange={(e) => setExecutionMode(e.target.value)}
+          {/* Execution Mode Section */}
+          <CollapsibleSection
+            title={`Execution Mode: ${executionMode === 'sequential' ? 'Sequential (Council → DxO)' : 'Parallel (Council || DxO → Aggregator)'}`}
+            defaultExpanded={true}
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-3">
+                  Execution Mode
+                </label>
+                <div className="flex space-x-4">
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="radio"
+                      name="executionMode"
+                      value="sequential"
+                      checked={executionMode === 'sequential'}
+                      onChange={(e) => setExecutionMode(e.target.value)}
+                      disabled={isLoading || messages.length > 0}
+                      className="mr-2"
+                    />
+                    <span className="text-white">Sequential (Council → DxO)</span>
+                  </label>
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="radio"
+                      name="executionMode"
+                      value="parallel"
+                      checked={executionMode === 'parallel'}
+                      onChange={(e) => setExecutionMode(e.target.value)}
+                      disabled={isLoading || messages.length > 0}
+                      className="mr-2"
+                    />
+                    <span className="text-white">Parallel (Council || DxO → Aggregator)</span>
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-slate-400">
+                  {executionMode === 'sequential' 
+                    ? 'Research prompt goes through Council first, then DxO refines the result'
+                    : 'Research prompt goes to both Council and DxO simultaneously, then aggregated'}
+                </p>
+              </div>
+
+              {/* Edit Instructions Button */}
+              <div className="pt-4 border-t border-slate-700">
+                <button
+                  onClick={() => setIsEditingInstructions(!isEditingInstructions)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isLoading || messages.length > 0}
-                  className="mr-2"
-                />
-                <span className="text-white">Sequential (Council → DxO)</span>
-              </label>
-              <label className="flex items-center cursor-pointer">
-                <input
-                  type="radio"
-                  name="executionMode"
-                  value="parallel"
-                  checked={executionMode === 'parallel'}
-                  onChange={(e) => setExecutionMode(e.target.value)}
-                  disabled={isLoading || messages.length > 0}
-                  className="mr-2"
-                />
-                <span className="text-white">Parallel (Council || DxO → Aggregator)</span>
-              </label>
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span>{isEditingInstructions ? 'Hide Additional Instructions' : 'Edit Additional Instructions'}</span>
+                </button>
+              </div>
+
+              {/* Instruction Editors */}
+              {isEditingInstructions && (
+                <div className="mt-4 space-y-6 pt-4 border-t border-slate-700">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-4">Additional Instructions</h3>
+                    <p className="text-sm text-slate-400 mb-4">Add custom instructions for Council models and DxO agents to customize their behavior.</p>
+                    
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-md font-medium text-slate-300 mb-3">Council Instructions</h4>
+                        <CouncilMembers 
+                          instructions={councilInstructions}
+                          onChange={setCouncilInstructions}
+                        />
+                        <ChairmanModel 
+                          instruction={councilInstructions.chairman}
+                          onChange={(value) => setCouncilInstructions(prev => ({ ...prev, chairman: value }))}
+                        />
+                      </div>
+                      
+                      <div>
+                        <h4 className="text-md font-medium text-slate-300 mb-3">DxO Instructions</h4>
+                        <DxOAgents 
+                          instructions={dxoInstructions}
+                          onChange={setDxoInstructions}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <p className="mt-2 text-xs text-slate-400">
-              {executionMode === 'sequential' 
-                ? 'Research prompt goes through Council first, then DxO refines the result'
-                : 'Research prompt goes to both Council and DxO simultaneously, then aggregated'}
-            </p>
-          </div>
+          </CollapsibleSection>
 
           <ResearchPrompt onSubmit={handleSubmit} isLoading={isLoading} />
           

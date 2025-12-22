@@ -1,6 +1,6 @@
 """Super Chat Sequential Mode - Council followed by DxO refinement."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from .council import run_full_council
 from .DxO import (
     stage1_lead_research,
@@ -12,19 +12,31 @@ from .groq_client import query_model
 from .config import LEAD_RESEARCH_MODEL, CRITIC_MODEL, DOMAIN_EXPERT_MODEL, AGGREGATOR_MODEL
 
 
-async def run_sequential_superchat(user_query: str) -> Tuple[List, List, Dict, Dict, Dict, Dict, Dict]:
+async def run_sequential_superchat(
+    user_query: str,
+    council_user_instructions: Dict[str, str] = None,
+    council_chairman_instruction: str = None,
+    dxo_user_instructions: Dict[str, str] = None
+) -> Tuple[List, List, Dict, Dict, Dict, Dict, Dict]:
     """
     Run sequential Super Chat: Council → DxO (refining Council result).
     
     Args:
         user_query: The user's research question
+        council_user_instructions: Optional dict mapping council model ID to instruction
+        council_chairman_instruction: Optional instruction for chairman model
+        dxo_user_instructions: Optional dict with keys: lead_research, critic, domain_expert, aggregator
         
     Returns:
         Tuple of (council_stage1, council_stage2, council_stage3, 
                  dxo_stage1, dxo_stage2, dxo_stage3, dxo_stage4)
     """
     # Step 1: Run full Council process
-    council_stage1, council_stage2, council_stage3, council_metadata = await run_full_council(user_query)
+    council_stage1, council_stage2, council_stage3, council_metadata = await run_full_council(
+        user_query,
+        user_instructions=council_user_instructions,
+        chairman_instruction=council_chairman_instruction
+    )
     
     # If Council failed, return early with error
     if not council_stage1 or council_stage3.get('response', '').startswith('Error:'):
@@ -37,7 +49,8 @@ async def run_sequential_superchat(user_query: str) -> Tuple[List, List, Dict, D
     # Stage 1: Lead Research - refine Council result and eliminate wrong facts
     dxo_stage1 = await stage1_lead_research_with_council(
         user_query,
-        council_stage3
+        council_stage3,
+        user_instruction=dxo_user_instructions.get('lead_research') if dxo_user_instructions else None
     )
     
     if dxo_stage1.get('response', '').startswith("Error:"):
@@ -50,7 +63,8 @@ async def run_sequential_superchat(user_query: str) -> Tuple[List, List, Dict, D
     dxo_stage2 = await stage2_critic_analysis_with_council(
         user_query,
         council_stage3,
-        dxo_stage1
+        dxo_stage1,
+        user_instruction=dxo_user_instructions.get('critic') if dxo_user_instructions else None
     )
     
     # Stage 3: Domain Expert - provide expertise on both
@@ -58,7 +72,8 @@ async def run_sequential_superchat(user_query: str) -> Tuple[List, List, Dict, D
         user_query,
         council_stage3,
         dxo_stage1,
-        dxo_stage2
+        dxo_stage2,
+        user_instruction=dxo_user_instructions.get('domain_expert') if dxo_user_instructions else None
     )
     
     # Stage 4: Aggregator - synthesize final answer from all inputs
@@ -67,7 +82,8 @@ async def run_sequential_superchat(user_query: str) -> Tuple[List, List, Dict, D
         council_stage3,
         dxo_stage1,
         dxo_stage2,
-        dxo_stage3
+        dxo_stage3,
+        user_instruction=dxo_user_instructions.get('aggregator') if dxo_user_instructions else None
     )
     
     return council_stage1, council_stage2, council_stage3, dxo_stage1, dxo_stage2, dxo_stage3, dxo_stage4
@@ -75,7 +91,8 @@ async def run_sequential_superchat(user_query: str) -> Tuple[List, List, Dict, D
 
 async def stage1_lead_research_with_council(
     user_query: str,
-    council_result: Dict[str, Any]
+    council_result: Dict[str, Any],
+    user_instruction: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Stage 1: Lead Research agent refines Council result and eliminates wrong facts.
@@ -110,6 +127,9 @@ Focus on:
 - Ensuring comprehensive coverage of the topic
 
 Provide your refined research findings:"""
+    
+    if user_instruction and user_instruction.strip():
+        research_prompt += f"\n\nAdditional User Instruction:\n{user_instruction.strip()}"
 
     messages = [{"role": "user", "content": research_prompt}]
 
@@ -130,7 +150,8 @@ Provide your refined research findings:"""
 async def stage2_critic_analysis_with_council(
     user_query: str,
     council_result: Dict[str, Any],
-    research_result: Dict[str, Any]
+    research_result: Dict[str, Any],
+    user_instruction: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Stage 2: Critic agent analyzes Council result and Lead Research findings.
@@ -165,6 +186,9 @@ Your critical analysis should:
 8. Assess the reliability and validity of the findings
 
 Provide a thorough critical analysis:"""
+    
+    if user_instruction and user_instruction.strip():
+        critique_prompt += f"\n\nAdditional User Instruction:\n{user_instruction.strip()}"
 
     messages = [{"role": "user", "content": critique_prompt}]
 
@@ -186,7 +210,8 @@ async def stage3_domain_expertise_with_council(
     user_query: str,
     council_result: Dict[str, Any],
     research_result: Dict[str, Any],
-    critique_result: Dict[str, Any]
+    critique_result: Dict[str, Any],
+    user_instruction: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Stage 3: Domain Expert provides specialized expertise on Council and research findings.
@@ -224,6 +249,9 @@ Your domain expertise should:
 7. Validate or challenge specific claims based on your domain expertise
 
 Provide your expert analysis and recommendations:"""
+    
+    if user_instruction and user_instruction.strip():
+        expert_prompt += f"\n\nAdditional User Instruction:\n{user_instruction.strip()}"
 
     messages = [{"role": "user", "content": expert_prompt}]
 
@@ -246,7 +274,8 @@ async def stage4_aggregate_synthesis_with_council(
     council_result: Dict[str, Any],
     research_result: Dict[str, Any],
     critique_result: Dict[str, Any],
-    expert_result: Dict[str, Any]
+    expert_result: Dict[str, Any],
+    user_instruction: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Stage 4: Aggregator synthesizes all inputs into final response.
@@ -289,6 +318,9 @@ Your task as Aggregator is to:
 9. Remove any unnecessary or irrelevant information
 
 Provide your synthesized final answer that represents the best of all inputs:"""
+    
+    if user_instruction and user_instruction.strip():
+        synthesis_prompt += f"\n\nAdditional User Instruction:\n{user_instruction.strip()}"
 
     messages = [{"role": "user", "content": synthesis_prompt}]
 

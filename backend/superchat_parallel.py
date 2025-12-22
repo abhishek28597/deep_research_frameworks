@@ -1,6 +1,6 @@
 """Super Chat Parallel Mode - Council and DxO run in parallel, then aggregated."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import asyncio
 from .council import run_full_council
 from .DxO import run_full_dxo
@@ -8,12 +8,20 @@ from .groq_client import query_model
 from .config import SUPER_AGGREGATOR_MODEL
 
 
-async def run_parallel_superchat(user_query: str) -> Tuple[List, List, Dict, Dict, Dict, Dict, Dict, Dict]:
+async def run_parallel_superchat(
+    user_query: str,
+    council_user_instructions: Optional[Dict[str, str]] = None,
+    council_chairman_instruction: Optional[str] = None,
+    dxo_user_instructions: Optional[Dict[str, str]] = None
+) -> Tuple[List, List, Dict, Dict, Dict, Dict, Dict, Dict]:
     """
     Run parallel Super Chat: Council || DxO → Super Aggregator.
     
     Args:
         user_query: The user's research question
+        council_user_instructions: Optional dict mapping council model ID to instruction
+        council_chairman_instruction: Optional instruction for chairman model
+        dxo_user_instructions: Optional dict with keys: lead_research, critic, domain_expert, aggregator
         
     Returns:
         Tuple of (council_stage1, council_stage2, council_stage3,
@@ -21,8 +29,12 @@ async def run_parallel_superchat(user_query: str) -> Tuple[List, List, Dict, Dic
                  super_aggregator_result)
     """
     # Run Council and DxO in parallel
-    council_task = run_full_council(user_query)
-    dxo_task = run_full_dxo(user_query)
+    council_task = run_full_council(
+        user_query,
+        user_instructions=council_user_instructions,
+        chairman_instruction=council_chairman_instruction
+    )
+    dxo_task = run_full_dxo(user_query, user_instructions=dxo_user_instructions)
     
     # Wait for both to complete
     council_result, dxo_result = await asyncio.gather(council_task, dxo_task)

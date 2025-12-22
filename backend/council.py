@@ -1,29 +1,56 @@
 """3-stage LLM Council orchestration."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
+import asyncio
 from .groq_client import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
 
 
-async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
+async def stage1_collect_responses(
+    user_query: str,
+    user_instructions: Optional[Dict[str, str]] = None
+) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
+        user_instructions: Optional dict mapping model ID to instruction string
 
     Returns:
         List of dicts with 'model' and 'response' keys
     """
-    messages = [{"role": "user", "content": user_query}]
+    if user_instructions is None:
+        user_instructions = {}
 
-    # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    # Check if any models have custom instructions
+    has_custom_instructions = any(
+        model in user_instructions and user_instructions[model].strip()
+        for model in COUNCIL_MODELS
+    )
+
+    if has_custom_instructions:
+        # Build custom messages for each model
+        tasks = []
+        for model in COUNCIL_MODELS:
+            prompt = user_query
+            if model in user_instructions and user_instructions[model].strip():
+                prompt += f"\n\nAdditional User Instruction:\n{user_instructions[model].strip()}"
+            messages = [{"role": "user", "content": prompt}]
+            tasks.append(query_model(model, messages))
+        
+        # Query all models in parallel with custom prompts
+        responses_list = await asyncio.gather(*tasks, return_exceptions=True)
+        responses = {model: resp for model, resp in zip(COUNCIL_MODELS, responses_list)}
+    else:
+        # Use standard parallel query (same message for all)
+        messages = [{"role": "user", "content": user_query}]
+        responses = await query_models_parallel(COUNCIL_MODELS, messages)
 
     # Format results
     stage1_results = []
     for model, response in responses.items():
-        if response is not None:  # Only include successful responses
+        if response is not None and not isinstance(response, Exception):  # Only include successful responses
             stage1_results.append({
                 "model": model,
                 "response": response.get('content', '')
@@ -115,7 +142,8 @@ Now provide your evaluation and ranking:"""
 async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]]
+    stage2_results: List[Dict[str, Any]],
+    chairman_instruction: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
@@ -124,6 +152,7 @@ async def stage3_synthesize_final(
         user_query: The original user query
         stage1_results: Individual model responses from Stage 1
         stage2_results: Rankings from Stage 2
+        chairman_instruction: Optional user-provided instruction for chairman
 
     Returns:
         Dict with 'model' and 'response' keys
@@ -155,6 +184,9 @@ Your task as Chairman is to synthesize all of this information into a single, co
 - Any patterns of agreement or disagreement
 
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+    
+    if chairman_instruction and chairman_instruction.strip():
+        chairman_prompt += f"\n\nAdditional User Instruction:\n{chairman_instruction.strip()}"
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
@@ -293,18 +325,24 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
+async def run_full_council(
+    user_query: str,
+    user_instructions: Optional[Dict[str, str]] = None,
+    chairman_instruction: Optional[str] = None
+) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
 
     Args:
         user_query: The user's question
+        user_instructions: Optional dict mapping council model ID to instruction string
+        chairman_instruction: Optional instruction string for chairman model
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
     # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query)
+    stage1_results = await stage1_collect_responses(user_query, user_instructions)
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -314,7 +352,10 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
         }, {}
 
     # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
+    stage2_results, label_to_model = await stage2_collect_rankings(
+        user_query,
+        stage1_results
+    )
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
@@ -323,7 +364,8 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
     stage3_result = await stage3_synthesize_final(
         user_query,
         stage1_results,
-        stage2_results
+        stage2_results,
+        chairman_instruction
     )
 
     # Prepare metadata

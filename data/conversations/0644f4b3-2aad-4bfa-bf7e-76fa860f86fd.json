@@ -1,0 +1,23 @@
+{
+  "id": "0644f4b3-2aad-4bfa-bf7e-76fa860f86fd",
+  "created_at": "2025-12-22T12:44:07.598667",
+  "title": "New Conversation",
+  "mode": "Council",
+  "messages": [
+    {
+      "role": "user",
+      "content": "How to start a company?"
+    },
+    {
+      "role": "assistant",
+      "stage1": [],
+      "stage2": [],
+      "stage3": {
+        "model": "openai/gpt-oss-120b",
+        "response": "Error: Unable to generate final synthesis."
+      },
+      "aggregate_rankings": [],
+      "label_to_model": {}
+    }
+  ]
+}
